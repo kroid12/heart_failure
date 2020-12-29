@@ -1,0 +1,418 @@
+---
+title: "**Heart-Failure**"
+author: "Paul Gis"
+date: "12/30/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# **1. Introduction** 
+
+## **1.1 Preface** 
+
+As a physician and epidemiologist, I wanted to have knowledge in the data science area in order to improve my profile and to take the additional step towards the use of the data as nowadays, these skills are crucial for integrating and analysing the great deal of information gathered from different sources. In this sense, and for completing the "choose your own" submission in the capstone course, I looked for a project related with health.
+
+## **1.2 Project Overview** 
+
+The project is based on a dataset published in kaggle (https://www.kaggle.com/andrewmvd/heart-failure-clinical-data) with information collected in 2015 of 299 patients with heart failure (HF), a cardiovascular disease (CVD) where the heart progressively is not capable of pumping enough blood to meet the body needs and could be life-threatening if not treatetd properly. The dataset contains 13 features, 12 of them can be used to predict the 13th one: death event; so in general, we are in front of a surpervised machine learning project to predict mortality caused by heart failure.
+
+## **1.3 Executive Summary** 
+
+### **1.3.1 Workflow** 
+
+The present project applys several machine learning classifiers to both predict the patients survival, and rank the features corresponding to the most important risk factors. Despite I am following the work made by Davide Chicco and Giuseppe Jurman (please find bellow the credicts to their work in the Acknowledgements section), they only described the processes and analysis they made but they did not share any of their algorithms, so the workflow I present here represents my own coding skills and the results may vary from theirs.
+
+After reviewing the structure of the dataset, and arranging the cathegories of each feature, I proceeded to make a general review to look for NAs or any other empty slots
+
+Moving on, a more in depth analysis was done to see if the numerical features had normal distributions, and after adjusting them by taking out the extreme values, a t-test was preformed to compare the means of ecah feature with the death event. For cathegorical features, a chi squared test was performed to see whether they were independent or not of the death event.
+
+finally, a desition tree and random forest models were trained for prediction and find out the most relevant features in the dataset.
+
+### **1.3.2 Results** 
+
+Based in the proposed model, we found out that in the dataset 5 of 7 numerical features did not have normal distributions, which led to find several outlayer values. Not to mention the cathegorical values, where was demonstrated that all of them were independent of the death event; taking out the extreme values in the numerical features resulted in the similarity of the means between each feature and the death event, which supported the non statistical differences. Following with the models, the desition tree and the random forest, these considerations were not taken into account and the algorithms used the whole dataset including the outlayer values, resulting in similar accuracy despite different features took relevance in each model.
+
+### **1.3.3 Conclusions** 
+
+- There is no information about the previous medical history of the patients and for how much time they had the diagnosis of the HF before entering the registry, so it is difficult to find correlation between variables or stablish any clinical significance.
+- There is no information about when the tests or mesurements in the dataset were taken once the patients entered the registry, which makes it impossible to know if they were taken at the begining or any other moment during the patinet´s follow up.
+- There is no information about any treatments taken before or during the follow up period, so it is no clear the clinical baseline status of the patients included in the registry and whether the HF was controlled or not, or if the death event was attibutable to the HF or any other cause.
+- The results of the models presented in this project are only for academic purposes and cannot be considered for clinical desitions, as more detailed information should be included for deeper analysis.
+
+## **1.4 Acknowledgements** 
+
+Chicco, D., Jurman, G. Machine learning can predict survival of patients with heart failure from serum creatinine and ejection fraction alone. BMC Med Inform Decis Mak 20, 16 (2020). https://doi.org/10.1186/s12911-020-1023-5. (https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-020-1023-5)
+
+License
+CC BY 4.0
+Splash icon
+Icon by Freepik, available on Flaticon.
+Splash banner
+Wallpaper by jcomp, available on Freepik.
+
+# **2. Methods and Analysis** 
+```{r, echo=FALSE, message=FALSE, include=FALSE}
+# this useful function to load several packages simultaneously by Steven Worthington can be found in https://gist.github.com/stevenworthington/3178163
+ipak <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg))
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+# usage of the ipack formula to load and call the packages needed
+packages <- c("tidyverse", "caret", "randomForest", "gsheet", "patchwork", "rpart", "rpart.plot", "car", "nortest", "rattle")
+# As I am sharing the dataset in googlesheets, I included a package "gsheet" for reading it easily. 
+# more information about this useful package could be found in this link: https://github.com/maxconway/gsheet
+ipak(packages)
+```
+
+As mentioned before, heart failure (HF) is a cardiovascular disease (CVD) where the heart is unable of pumping the blood to meet the organs and tisues needs, therefore, the patients need an appropriate and early treatment for controling the progression of the disease and avoiding further complications.
+
+The medical literature has already described several risks factors for CVD, such as hypertension, diabetes or hyperlipidemia among others; but there are also some behavioural risks factors that contribute to the disease and are completly preventable, such as such as tobacco use, unhealthy diet and obesity, physical inactivity and harmful use of alcohol. The dataset used for this project, combines a mix of both clinical and behavioural risks.
+
+## **2.1 Comprehensive Analysis of the Dataset** 
+```{r, echo=FALSE, message=FALSE, include=FALSE}
+#this chunk is not included in the final pdf document
+hf <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1V2KWrOSKKoeEID9-mvwIxcDp83RWlWUq9F5LFJpZqnk/edit?usp=sharing")
+```
+
+The dataset presented for this project contains the medical records of 299 HF patients (rows) collected at the Faisalabad Institute of Cardiology and at the Allied Hospital in Faisalabad (Punjab, Pakistan), during April–December 2015. The patients consisted of 105 women and 194 men, and their ages range between 40 and 95 years old. It contains 13 columns (features): Age, Anaemia, High blood preasure, Creatine phosphokinase (CPK), Diabetes, Ejection fraction, Sex, Platelets, Serum creatinine, Serum sodium, Smocking, Time and death event, being this last one the target feature for the prediction model. A short description for each variable can be found in Table 1.
+
+##### **Table 1 Meanings, measurement units, and intervals of each feature of the dataset**
+###### (https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-020-1023-5/tables/1)
+
+```{r pressure, echo=FALSE, out.width = '100%'}
+knitr::include_graphics("Table1.png")
+```
+
+For a better understanding of the features, we can found a quick description of them in the paper written by Davide Chicco and Giuseppe Jurman: *the creatinine phosphokinase (CPK) states the level of the CPK enzyme in blood. When a muscle tissue gets damaged, CPK flows into the blood. Therefore, high levels of CPK in the blood of a patient might indicate a heart failure or injury. The ejection fraction states the percentage of how much blood the left ventricle pumps out with each contraction. The serum creatinine is a waste product generated by creatine, when a muscle breaks down. Especially, doctors focus on serum creatinine in blood to check kidney function. If a patient has high levels of serum creatinine, it may indicate renal dysfunction. Sodium is a mineral that serves for the correct functioning of muscles and nerves. The serum sodium test is a routine blood exam that indicates if a patient has normal levels of sodium in the blood. An abnormally low level of sodium in the blood might be caused by heart failure. The death event feature, that we use as the target in our binary classification study, states if the patient died or survived before the end of the follow-up period.*
+
+As is shown in table 1, some features are numeric: years, Creatinine phosphokinase, ejection fraction, platelets, serum creatinine, serum sodium and days; an others are boolean (binary), so they ranges are 0 or 1: anaemia, high blood pressure, diabetes, sex, smoking and death event; however, taking a closer look to the dataset in R shows all features as numeric:
+```{r, echo=FALSE, message=FALSE}
+#first analysis of the dataset
+str(hf)
+```
+So binary features should be changed to factors, and where 0 represents "no" and 1 "yes" in anaemia, Hihg blood pressure, diabetes, smocking and death event; and in sex feature "female" or "male" respectively. we can also re name some of them for having short and more easy to use names:
+```{r, message=FALSE}
+# changing to factor bolean features
+hf <- hf %>% mutate(anaemia = as.factor(if_else(anaemia == 0, "no", "yes")),
+              diabetes = as.factor(if_else(diabetes == 0, "no", "yes")), 
+              high_blood_pressure = as.factor(if_else(high_blood_pressure == 0, "no", "yes")),
+              sex = as.factor(if_else(sex == 0, "female", "male")),
+              smoking = as.factor(if_else(smoking == 0, "no", "yes")),
+              DEATH_EVENT = as.factor(if_else(DEATH_EVENT == 0, "no", "yes")))
+# renaming long name features
+hf <- rename(hf, cpk = creatinine_phosphokinase,
+               eject_f = ejection_fraction,
+               hbp = high_blood_pressure,
+               serum_c = serum_creatinine,
+               serum_s = serum_sodium,
+               death_event = DEATH_EVENT)
+```
+
+Now we can explore whether there is any NAs, missing values or both:
+```{r}
+# exploring the data set for NAs
+sum(is.na(hf))
+```
+Fortunately this is not the case, sowe can now move forward to have a general view of the information:
+```{r}
+summary(hf)
+```
+
+It shows that the cohort studied has 105 women and 194 men. Other binary features apparently shows that there are more proportion of patients without anaemia, diabetes and high blood preasure, and also not smockers, which is curious considering that some of these are well known risks factors for HF and CVD, nevertheless, right now is to premature to have any conclusions as more in depth analysis should be preformed. 
+
+For numeric features, we see that the age range is from 40 to 95 years old. The creatinine phosphokinase shows a very broad range, going form a minimum of 23 through a maximum of 7861 mcg/L, which could be due to some outlayer values that must be analysed considering that the mean and 3rd quartile are close (581.8 and 582.0 respectively). For ejection fraction feature, the clinical community groups heart failure into two types based on the ejection fraction value, that is the proportion of blood pumped out of the heart during a single contraction, given as a percentage with physiological values ranging between 50% and 75%. The former is heart failure due to reduced ejection fraction (HFrEF), known as systolic dysfunction or systolic heart failure and characterized by an ejection fraction smaller than 40. The latter is heart failure with preserved ejection fraction (HFpEF), called diastolic heart failure or heart failure with normal ejection fraction. In this case, the left ventricle contracts normally during systole, but the ventricle is stiff and fails to relax normally during diastole, thus impairing filling. We see in the dataset that the range goes from 14 to 80, with a mean of 38, which probably we have patients both with HFrEF and HFpEF. For platelets, normal counts go from 150.000 to 450.000, and in the dataset we see that the mean is in the midle of that range but there are some extreme values too.  For serum creatinine, normal values are among 0.7 and 1.2 mg/dL, but in our cohort we see a little higher mean with 1.394 mg/dL with an incredible maximum of 9.4 mg/dL, wich clearly states that there is some renal impairment in this patients consistent with the HF condicion. in sodium serum values, we see that the mean is 136.6 mEq/L and with minumum of 113.0 mEq/L, which is low of the normal values of 135 to 145 mEq/L and again, it is consistent with the clinical of a heart failure in an advanced stage. It is also important to note that the maximum time before a death event was 285 days, however, the minimum noted was 4 days, which gives a broad range with a mean of 130.3 days. This information could be useful to take into account for our model if we want to see if there is any correlation among other features and the time in days of a death event to ocurr. Last, but not least, there were 96 death events in total, which is a high number considering that the follow up period is less than a year and tells us that probably these patients had suffered of HF from long time before they entered the registry.
+
+## **2.2 Numeric Feature Distribution and General Information** 
+
+Visualy, we can see how the features are distributed in the following graphs:
+
+```{r echo=FALSE, message=FALSE}
+# General distribution graphs
+# numerice features
+# Age
+age <-  hf %>%
+  ggplot(aes(age)) +
+  geom_histogram(bins = 10, color = "black") +
+  ggtitle("age")
+# Creatinine Phophokinase
+creat_ph <-  hf %>%
+  ggplot(aes(cpk)) +
+  geom_histogram(bins = 10, color = "black") +
+  ggtitle("Creatinine Phosphokinase")
+# ejection fraction
+eject_f <- hf %>%
+  ggplot(aes(eject_f)) +
+  geom_histogram(bins = 20, color = "black") +
+  ggtitle("Ejection Fraction")
+# Platelets
+platelets <- hf %>%
+  ggplot(aes(platelets)) +
+  geom_histogram(bins = 20, color = "black") +
+  ggtitle("Platelets")
+# Serum Creatinine
+serum_c <- hf %>%
+  ggplot(aes(serum_c)) +
+  geom_histogram(bins = 20, color = "black") +
+  ggtitle("Serum Creatinine")
+# Serum sodium
+serum_s <- hf %>%
+  ggplot(aes(serum_s)) +
+  geom_histogram(bins = 20, color = "black") +
+  ggtitle("Serum sodium")
+# Time until death event
+time_de <- hf %>%
+  ggplot(aes(time)) +
+  geom_histogram(bins = 20, color = "black") +
+  ggtitle("Time until Death Event")
+# combine all graphs in one graph
+((age + creat_ph + eject_f + platelets) / (serum_c + serum_s + time_de)) +
+  plot_annotation(title = "Distribution of the numeric features")
+```
+
+So, taking a look in the summary and the visual of the distribution of the features, we have this information so far:
+
+Numeric:
+
+1. age: patients form 40 to 95 years old
+2. creatinine phosphokinase: the less the better, but we found a mean of 581 with huge extreme high values
+3. ejection fraction: mean of 38.0.8, let´s say by know that we have balanced HFrEF and HFpEF
+4. platelets: in average 263.000, but with extreme values
+5. serum creatinine: normal values are among 0.7 and 1.2 mg/dL but also with some extreme values
+6. serum sodium: normal values range from 135 mEq/L to 145 mEq/L, but with a mean in our cohort near the lower limit (136.6mEq/L) and more extreme lowe minimal values
+7. time: mean around 130 days but broad spectrum with a minimum of 4 days and a maximum of 285. All death events in less than a year time. 
+8. death event: 96 deaths vs 203.
+
+Cathegorical:
+
+1. anaemia: more people without it (170 vs 129). Need to see correlation with death events
+2. diabetes: more people without it (174 vs 125). Need to see correlation with death events
+3. high blood preasure: more people without it (194 vs 105). Need to see correlation with death events
+4. sex: 194 men and 105 women
+5. smocking: more not smocking people (203 vs 96). Need to see correlation with death events.
+
+we need now to take a closer look of the features in order to see if there is correlation among them
+
+## **2.3 Correlations** 
+
+Starting with the numeric features, we need to take a look to their correlation with the death event feature, and is it shown in the next graph, we can see that by grouping them by death event, some of them visualy do not change so much based on that they have similar results for both conditions (their means apparently are at the same level). This is the case in example, for creatinine phoshokinase or platelets; nevertheless, we see that some others apparently do have differences, as it´s seen in ejection fraction, serum creatinine, serum sodium and time:
+
+```{r, echo=FALSE, message=FALSE}
+# graphics to see correlation between features and DEATH EVENT
+#  Age by death event
+graph_age <- ggplot(hf, aes(x=death_event, y=age, group=death_event)) +
+  geom_boxplot(aes(fill=death_event))
+# creatinine phosphokinase by death event
+graph_cph <- ggplot(hf, aes(x=death_event, y=cpk, group=death_event)) +
+  geom_boxplot(aes(fill=death_event))
+# ejection fraction by death event
+graph_ef <- ggplot(hf, aes(x=death_event, y=eject_f, group=death_event)) +
+  geom_boxplot(aes(fill=death_event))
+# Platelets by death event
+graph_plat <- ggplot(hf, aes(x=death_event, y=platelets, group=death_event)) +
+  geom_boxplot(aes(fill=death_event))
+# serum creatinine by death event
+graph_sc <- ggplot(hf, aes(x=death_event, y=serum_c, group=death_event)) +
+  geom_boxplot(aes(fill=death_event))
+# serum sodium by death event
+graph_ss <- ggplot(hf, aes(x=death_event, y=serum_s, group=death_event)) +
+  geom_boxplot(aes(fill=death_event))
+# time by death event
+graph_time <- ggplot(hf, aes(x=death_event, y=time, group=death_event)) +
+  geom_boxplot(aes(fill=death_event))
+# combine all graphs in one graph
+((graph_age + graph_cph) / (graph_ef + graph_plat) / (graph_sc + graph_ss) / (graph_time)) +
+  plot_annotation(title = "Boxplots of Numeric Features with Death Event")
+```
+
+To have a formal confirmation of these assumtions, we can pass a normal distribution test to them.
+
+### **2.3.1 Normal Distribution Test** 
+
+Before we perform any test, we need to confirm first if the features are normal distributions. As we have more than 50 observations, a Kolmogorov-Smirnov test can help us:
+```{r, echo=FALSE, message=FALSE}
+# normal distribution test
+numeric_features <- hf %>%
+  group_by(death_event) %>%
+  select_if(is.numeric)
+normality_test <-  data.frame(p.value = sapply(numeric_features[2:8], function(x) round(lillie.test(x)$p.value, 4))) 
+print(normality_test)
+```
+
+As none of them are normal distributions (all are < 0.05), we should take a look to the outlayers as probably they are messing all things up:
+
+```{r, echo=FALSE, message=FALSE}
+age_bp <- ggplot(hf, aes(x=age)) + geom_boxplot()
+cpk_bp <- ggplot(hf, aes(x=cpk)) + geom_boxplot()
+ef_bp <- ggplot(hf, aes(x=eject_f)) + geom_boxplot()
+plat_bp <- ggplot(hf, aes(x=platelets)) + geom_boxplot()
+serumc_bp <- ggplot(hf, aes(x=serum_c)) + geom_boxplot()
+serums_bp <- ggplot(hf, aes(x=serum_s)) + geom_boxplot()
+time_bp <- ggplot(hf, aes(x=time)) + geom_boxplot()
+((age_bp + cpk_bp + ef_bp) / (plat_bp + serumc_bp + serums_bp) / (time_bp)) +
+  plot_annotation("Boxplots of Numeric Features to Show Outlayers")
+```
+
+As we can see, only the age and time appear to be clear of extreme values, the rest of them have outlayers, so we need to take them out to see whether things get better in terms of normality for distribution. so after taking out the oulayers for each feature, we can see that now all of them are normally distributed:
+```{r, echo=FALSE, message=FALSE}
+age_ks <- lillie.test(hf$age)$p.value
+cpk_out <- hf %>% filter(min(boxplot.stats(hf$cpk)$stats) <= hf$cpk & hf$cpk <= max(boxplot.stats(hf$cpk)$stats))
+cpk_ks <- lillie.test(cpk_out$cpk)$p.value
+ef_out <- hf %>% filter(min(boxplot.stats(hf$eject_f)$stats) <= hf$eject_f & hf$eject_f <= max(boxplot.stats(hf$eject_f)$stats))
+ef_ks <- lillie.test(ef_out$eject_f)$p.value
+plat_out <- hf %>% filter(min(boxplot.stats(hf$platelets)$stats) <= hf$platelets & hf$platelets <= max(boxplot.stats(hf$platelets)$stats))
+plat_ks <- lillie.test(plat_out$platelets)$p.value
+serum_c_out <- hf %>% filter(min(boxplot.stats(hf$serum_c)$stats) <= hf$serum_c & hf$serum_c <= max(boxplot.stats(hf$serum_c)$stats))
+serumc_ks <- lillie.test(serum_c_out$serum_c)$p.value
+serum_s_out <- hf %>% filter(min(boxplot.stats(hf$serum_s)$stats) <= hf$serum_s & hf$serum_s <= max(boxplot.stats(hf$serum_s)$stats))
+serums_ks <- lillie.test(serum_s_out$serum_c)$p.value
+time_ks <- lillie.test(hf$time)$p.value
+
+normality_test <- data.frame(Features = names(numeric_features[2:8]),
+                             p.value = c(age_ks, cpk_ks, ef_ks, plat_ks, serumc_ks, serums_ks, time_ks))  
+                                               
+print(normality_test)  
+```
+
+### **2.3.2 Homogeneity of Variances Test** 
+
+Now we have to see if we have homogeneity of variances:
+```{r, echo=FALSE, message=FALSE}
+age_lt <- round(leveneTest(hf$age ~ hf$death_event)$"Pr(>F)"[1],4)
+cpk_lt <- round(leveneTest(cpk_out$cpk ~ cpk_out$death_event)$"Pr(>F)"[1],4)     
+ef_lt <- round(leveneTest(ef_out$eject_f ~ ef_out$death_event)$"Pr(>F)"[1],4)
+plat_lt <- round(leveneTest(plat_out$platelets ~ plat_out$death_event)$"Pr(>F)"[1],4)
+serumc_lt <- round(leveneTest(serum_c_out$serum_c ~ serum_c_out$death_event)$"Pr(>F)"[1],4)
+serums_lt <- round(leveneTest(serum_s_out$serum_s ~ serum_s_out$death_event)$"Pr(>F)"[1],4)
+time_lt <- round(leveneTest(hf$time ~ hf$death_event)$"Pr(>F)"[1],4)
+
+variances_test <- data.frame(Features = names(numeric_features[2:8]),
+                             p.value = c(age_lt, cpk_lt, ef_lt, plat_lt, serumc_lt, serums_lt, time_lt))
+print(variances_test)
+```
+These tests show that we have homogeneity of variances in the cpk, ejection fraction, platelets and serum sodium features. This is important to arrange the t-test function as we need to declare if the variances have or not homogeneity within the formula.
+
+Finally, we are all set with the numeric features to see which of them doesn´t have statistical differences comparing their means by death event. This step will help us out to determine which numeric features are relevant to consider in our prediction model.
+
+### **2.3.3 T of Student Test** 
+
+```{r, echo=FALSE, message=FALSE}
+age_tt <- round(t.test(hf$age ~ hf$death_event, var.eq=F)$p.value,4)
+cpk_tt <- round(t.test(cpk_out$cpk ~ cpk_out$death_event, var.eq=T)$p.value,4)    
+ef_tt <- round(t.test(ef_out$eject_f ~ ef_out$death_event, var.eq=T)$p.value,4)
+plat_tt <- round(t.test(plat_out$platelets ~ plat_out$death_event, var.eq=T)$p.value,4)
+serumc_tt <- round(t.test(serum_c_out$serum_c ~ serum_c_out$death_event, var.eq=F)$p.value,4)
+serums_tt <- round(t.test(serum_s_out$serum_s ~ serum_s_out$death_event, var.eq=T)$p.value,4)
+time_tt <- round(t.test(hf$time ~ hf$death_event, var.eq=F)$p.value,4)
+
+ttest <- data.frame(Features = names(numeric_features[2:8]),
+                             p.value = c(age_tt, cpk_tt, ef_tt, plat_tt, serumc_tt, serums_tt, time_tt))
+print(ttest)
+```
+
+
+### **2.3.4 Correlation of Cathegorical Features with Death Event** 
+
+Moving forward, we need to see if there is correlation of the cathegorical features and death events, so we can use the chi squared test to see this.
+```{r, echo=FALSE, message=FALSE}
+hf_cat <- hf %>% select("anaemia", "diabetes", "hbp", "sex", "smoking", "death_event")
+catheg_chiq <-  data.frame(X_squared = sapply(hf_cat[1:5], function(x) chisq.test(x, hf_cat$death_event)$statistic),
+                            p_value = sapply(hf_cat[1:5], function(x) chisq.test(x, hf_cat$death_event)$p.value))
+print(catheg_chiq)
+```
+
+As we can see, none of them have a p value < 0.05, so based on this we can tell that none of the cathegorical features is related with the death event (they are independent of it) so we do not bother to include any of them in our model.
+
+## **2.4 The Models ** 
+
+Unfortunately for the model, we saw that several features are independent (cathegoricals) or have the same mean (numerical) of the death event, which means that the data has not statistical significance in their results so we cannot assume the results for actual clinical desitions. Nevertheless, and for academic purposes, we can train some models in order to use the dataset to predict death events in new hf patients
+
+First, we have to partitionate the dataset into training and test sets so we can build the models in the train set and then test them in the test set:
+```{r, message=FALSE}
+# creating training and test sets
+set.seed(123)
+test_index <-  createDataPartition(y =hf$death_event, times = 1, p = 0.5, list = FALSE)
+train_set <- hf[-test_index, ]
+test_set <- hf[test_index, ]
+```
+
+### **2.4.1 Desition Tree** 
+
+Using the train set, we can grow a desition tree based on the relevance of the features:
+```{r, echo=FALSE, message=FALSE}
+# Desition tree
+set.seed(0, sample.kind = "Rounding")
+tree_hf <- rpart(death_event ~.,
+              data = train_set,
+              method = "class")
+fancyRpartPlot(tree_hf)
+```
+
+As we can see, it only includes time and serum creatinine as key features for modeling, but despite that, we can obtain an accuracy of 81.33%:
+```{r, message=FALSE}
+# Using desition tree for prediction
+prediction_tree <- predict(tree_hf, test_set, type = "class")
+# Save the solution to a dataframe with two columns: death event and prediction
+solution <- data.frame(death_event = test_set$death_event, prediction = prediction_tree) 
+solution <- solution %>% mutate(comparison = if_else(death_event == prediction, 1, 0))
+accuracy <- sum(solution$comparison)/nrow(solution)*100
+accuracy
+```
+
+### **2.4.2 Random Forest** 
+
+According to the course materials for the analysis, it stated that at least 2 models should be trained to accomplish the minimal requirements for this project, so based in the model of the desition tree, we can move forward and try a random forest model:
+
+```{r, echo=FALSE, message=FALSE}
+# setting a random seed
+set.seed(456, sample.kind = "Rounding")
+# Random Forest Model
+rf_model <- randomForest(death_event ~., data = train_set)
+# Show model error
+plot(rf_model, ylim=c(0,0.5))
+legend('topright', colnames(rf_model$err.rate), col=1:3, fill=1:3)
+```
+
+We see that it gives an interesting result, where the  OOB estimate oferror rate is 14.77%, which in other terms gives an accuracy of 85.23%, similar to the one obtained with the desition tree.
+
+Finally, we can have the variables importance to see the most important features in the model:
+
+```{r, echo=FALSE, message=FALSE}
+# Get importance
+importance    <- rf_model$importance
+varImportance <- data.frame(Variables = row.names(importance), 
+                            Importance = round(importance[ ,'MeanDecreaseGini'],2))
+# Create a rank variable based on importance
+rankImportance <- varImportance %>%
+  mutate(Rank = paste0('#',dense_rank(desc(Importance))))
+# Use ggplot2 to visualize the relative importance of variables
+ggplot(rankImportance, aes(x = reorder(Variables, Importance), 
+                           y = Importance, fill = Importance)) +
+  geom_bar(stat='identity') + 
+  geom_text(aes(x = Variables, y = 0.5, label = Rank),
+            hjust=0, vjust=0.55, size = 4, colour = 'red') +
+  labs(x = 'Variables') +
+  coord_flip()
+```
+
+Interestingly, we see that in this model, time is the most relevant feature, followed by serum creatinine and ejection fraction.
+
+# **3. Results** 
+
+Based in the proposed model, we found out that in the dataset 5 of 7 numerical features did not have normal distributions, which led to find several outlayer values. Not to mention the cathegorical values, where was demonstrated that all of them were independent of the death event; taking out the extreme values in the numerical features resulted in the similarity of the means between each feature and the death event, which supported the non statistical differences. Following with the models, the desition tree and the random forest, these considerations were not taken into account and the algorithms used the whole dataset including the outlayer values, resulting in similar accuracy despite different features took relevance in each model.
+
+# **4. Conclusions** 
+
+- There is no information about the previous medical history of the patients and for how much time they had the diagnosis of the HF before entering the registry, so it is difficult to find correlation between variables or stablish any clinical significance.
+- There is no information about when the tests or mesurements in the dataset were taken once the patients entered the registry, which makes it impossible to know if they were taken at the begining or any other moment during the patinet´s follow up.
+- There is no information about any treatments taken before or during the follow up period, so it is no clear the clinical baseline status of the patients included in the registry and whether the HF was controlled or not, or if the death event was attibutable to the HF or any other cause.
+- The results of the models presented in this project are only for academic purposes and cannot be considered for clinical desitions, as more detailed information should be included for deeper analysis.
+
+
+
